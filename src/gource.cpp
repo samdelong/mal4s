@@ -997,6 +997,9 @@ void Gource::keyPress(SDL_KeyboardEvent *e) {
                     timeline_mode = TIMELINE_PLAYBACK;
                     timeline_playback = new TimelinePlayback(timeline_recorder);
 
+                    // Start at the end of the timeline
+                    timeline_playback->setTime(duration);
+
                     printf("Starting playback...\n");
                     timeline_playback->play();
 
@@ -1863,20 +1866,8 @@ void Gource::logic(float t, float dt) {
         return;
     }
 
-    // Timeline playback mode - restore positions but allow camera/interaction
+    // Timeline playback mode - update playback time and slider
     if (timeline_mode == TIMELINE_PLAYBACK && timeline_playback) {
-        static int playback_frame = 0;
-        playback_frame++;
-        if(playback_frame % 60 == 0) {
-            fprintf(stderr, "Playback frame %d, time=%.2f\n",
-                    playback_frame, timeline_playback->getCurrentTime());
-            fflush(stderr);
-        }
-
-        // Restore object positions from snapshot
-        FrameSnapshot snapshot = timeline_playback->getCurrentState();
-        restoreFromSnapshot(snapshot);
-
         // Update playback time if playing
         if (timeline_playback->isPlaying()) {
             float new_time = timeline_playback->getCurrentTime() + dt;
@@ -1886,7 +1877,11 @@ void Gource::logic(float t, float dt) {
         // Update slider position
         slider.setPercent(timeline_playback->getProgress());
 
-        // DON'T return - allow camera movement and rendering to continue
+        // Keep slider always visible in timeline mode
+        slider.show();
+
+        // Note: Position restoration happens in draw(), not here,
+        // so physics can run normally without conflicts
     }
 
     // Show message when animation finishes and recording is complete
@@ -2227,6 +2222,23 @@ void Gource::logic(float t, float dt) {
 }
 
 void Gource::mousetrace(float dt) {
+
+    // In timeline playback mode, skip file/user interaction - allow camera drag only
+    if(timeline_mode == TIMELINE_PLAYBACK) {
+        if(hoverUser) {
+            hoverUser->setMouseOver(false);
+            hoverUser = 0;
+        }
+        if(hoverFile) {
+            hoverFile->setMouseOver(false);
+            hoverFile = 0;
+        }
+        // If clicked and NOT dragging slider, enable camera dragging
+        if(mouseclicked && !slider.isDragging()) {
+            selectBackground();
+        }
+        return;
+    }
 
     vec3 cam_pos = camera.getPos();
 
@@ -3084,6 +3096,12 @@ void Gource::draw(float t, float dt) {
         return;
     }
 
+    // Restore positions from timeline snapshot (do this in draw, not logic, so physics doesn't override)
+    if(timeline_mode == TIMELINE_PLAYBACK && timeline_playback) {
+        FrameSnapshot snapshot = timeline_playback->getCurrentState();
+        restoreFromSnapshot(snapshot);
+    }
+
     Frustum frustum(camera.getPos(), camera.getTarget(), camera.getUp(), camera.getFOV(), camera.getZNear(), camera.getZFar());
 
     trace_time = SDL_GetTicks();
@@ -3567,7 +3585,25 @@ void Gource::restoreFromSnapshot(const FrameSnapshot& snapshot) {
     // Restore camera position
     camera.setPos(snapshot.camera_pos);
 
-    // Restore directory nodes
+    // Build set of visible objects in snapshot for quick lookup
+    std::set<std::string> visible_dirs, visible_files, visible_users;
+    for (const auto& dn : snapshot.dirnodes) {
+        if (dn.visible) visible_dirs.insert(dn.path);
+    }
+    for (const auto& f : snapshot.files) {
+        if (f.visible) visible_files.insert(f.path);
+    }
+    for (const auto& u : snapshot.users) {
+        if (u.visible) visible_users.insert(u.name);
+    }
+
+    // Restore directory nodes - hide those not in snapshot
+    for (auto it = gGourceDirMap.begin(); it != gGourceDirMap.end(); ++it) {
+        RDirNode* node = it->second;
+        bool in_snapshot = (visible_dirs.find(node->getPath()) != visible_dirs.end());
+        node->visible = in_snapshot;
+    }
+
     for (const auto& dn_state : snapshot.dirnodes) {
         auto it = gGourceDirMap.find(dn_state.path);
         if (it != gGourceDirMap.end()) {
@@ -3575,10 +3611,17 @@ void Gource::restoreFromSnapshot(const FrameSnapshot& snapshot) {
             node->pos = dn_state.pos;
             node->vel = dn_state.vel;
             node->dir_radius = dn_state.radius;
+            node->visible = dn_state.visible;
         }
     }
 
-    // Restore files
+    // Restore files - hide those not in snapshot
+    for (auto it = files.begin(); it != files.end(); ++it) {
+        RFile* file = it->second;
+        bool in_snapshot = (visible_files.find(file->path) != visible_files.end());
+        file->setHidden(!in_snapshot);
+    }
+
     for (const auto& f_state : snapshot.files) {
         auto it = files.find(f_state.path);
         if (it != files.end()) {
@@ -3588,7 +3631,13 @@ void Gource::restoreFromSnapshot(const FrameSnapshot& snapshot) {
         }
     }
 
-    // Restore users
+    // Restore users - hide those not in snapshot
+    for (auto it = users.begin(); it != users.end(); ++it) {
+        RUser* user = it->second;
+        bool in_snapshot = (visible_users.find(user->getName()) != visible_users.end());
+        user->setHidden(!in_snapshot);
+    }
+
     for (const auto& u_state : snapshot.users) {
         auto it = users.find(u_state.name);
         if (it != users.end()) {
