@@ -3582,8 +3582,8 @@ void Gource::runPreSimulation() {
 }
 
 void Gource::restoreFromSnapshot(const FrameSnapshot& snapshot) {
-    // Restore camera position
-    camera.setPos(snapshot.camera_pos);
+    // Don't restore camera position - let user freely move camera in timeline mode
+    // camera.setPos(snapshot.camera_pos);
 
     // Build set of visible objects in snapshot for quick lookup
     std::set<std::string> visible_dirs, visible_files, visible_users;
