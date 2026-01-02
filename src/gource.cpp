@@ -17,6 +17,8 @@
 
 #include "gource.h"
 #include "core/png_writer.h"
+#include "timeline_recorder.h"
+#include "timeline_playback.h"
 
 
 bool  gGourceDrawBackground  = true;
@@ -152,6 +154,16 @@ Gource::Gource(FrameExporter* exporter) {
     setCameraMode(gGourceSettings.camera_mode);
 
     root = 0;
+
+    // Timeline initialization
+    timeline_recorder = nullptr;
+    timeline_playback = nullptr;
+    timeline_mode = TIMELINE_DISABLED;
+
+    if(gGourceSettings.timeline_mode) {
+        timeline_recorder = new TimelineRecorder(gGourceSettings.timeline_fps);
+        timeline_mode = TIMELINE_RECORDING;
+    }
 
     //min physics rate 60fps (ie maximum allowed delta 1.0/60)
     max_tick_rate = 1.0 / 60.0;
@@ -374,6 +386,17 @@ void Gource::mouseMove(SDL_MouseMotionEvent *e) {
 
     bool rightmouse = cursor.rightButtonPressed();
 
+    mousepos = vec2(e->x, e->y);
+    cursor.updatePos(mousepos);
+
+    // Timeline scrubbing - update drag
+    if(timeline_mode == TIMELINE_PLAYBACK && slider.isDragging()) {
+        float position;
+        slider.updateDrag(mousepos, &position);
+        timeline_playback->seekTo(position);
+        return;  // Skip other mouse handling during scrubbing
+    }
+
     //move camera in direction the user dragged the mouse
     if(mousedragged || rightmouse) {
         vec2 mag( e->xrel, e->yrel );
@@ -462,6 +485,11 @@ void Gource::mouseClick(SDL_MouseButtonEvent *e) {
     if(e->type == SDL_MOUSEBUTTONUP) {
 
         if(e->button == SDL_BUTTON_LEFT) {
+            // Timeline scrubbing - end drag
+            if(timeline_mode == TIMELINE_PLAYBACK && slider.isDragging()) {
+                slider.endDrag();
+            }
+
             //stop dragging mouse, return the mouse to where
             //the user started dragging.
             mousedragged=false;
@@ -507,7 +535,14 @@ void Gource::mouseClick(SDL_MouseButtonEvent *e) {
         //mousepos = vec2(e->x, e->y);
         mouseclicked=true;
 
-        if(canSeek()) {
+        // Timeline scrubbing - start drag
+        if(timeline_mode == TIMELINE_PLAYBACK) {
+            float position;
+            if(slider.startDrag(mousepos, &position)) {
+                timeline_playback->pause();
+                timeline_playback->seekTo(position);
+            }
+        } else if(canSeek()) {
             float position;
             if(slider.click(mousepos, &position)) {
                 seekTo(position);
@@ -948,6 +983,38 @@ void Gource::keyPress(SDL_KeyboardEvent *e) {
         }
 
         if (e->keysym.sym == SDLK_t) {
+            // Check if we should enter timeline mode
+            if(timeline_mode == TIMELINE_RECORDING && timeline_recorder) {
+                bool animation_finished = (commitlog && commitlog->isFinished() && commitqueue.empty());
+                if(animation_finished) {
+                    // Stop recording and enter playback mode
+                    printf("Stopping recording...\n");
+                    timeline_recorder->stopRecording();
+
+                    size_t frame_count = timeline_recorder->getSnapshotCount();
+                    float duration = timeline_recorder->getTotalDuration();
+                    printf("Creating TimelinePlayback...\n");
+                    timeline_mode = TIMELINE_PLAYBACK;
+                    timeline_playback = new TimelinePlayback(timeline_recorder);
+
+                    printf("Starting playback...\n");
+                    timeline_playback->play();
+
+                    printf("Showing slider...\n");
+                    slider.show();
+
+                    printf("\n===========================================\n");
+                    printf("Timeline mode activated!\n");
+                    printf("Frames recorded: %zu\n", frame_count);
+                    printf("Duration: %.1fs\n", duration);
+                    printf("Drag the slider to scrub through the timeline\n");
+                    printf("===========================================\n\n");
+
+                    return; // Don't toggle hide_tree when entering timeline mode
+                }
+            }
+
+            // Normal behavior - toggle tree visibility
             gGourceSettings.hide_tree = !gGourceSettings.hide_tree;
         }
 
@@ -1280,6 +1347,9 @@ void Gource::deleteUser(RUser* user) {
 }
 
 bool Gource::canSeek() {
+    // In timeline playback mode, we can always seek through recorded frames
+    if(timeline_mode == TIMELINE_PLAYBACK && timeline_playback) return true;
+
     if(gGourceSettings.hide_progress || commitlog == 0 || !commitlog->isSeekable()) return false;
 
     return true;
@@ -1793,6 +1863,46 @@ void Gource::logic(float t, float dt) {
         return;
     }
 
+    // Timeline playback mode - restore positions but allow camera/interaction
+    if (timeline_mode == TIMELINE_PLAYBACK && timeline_playback) {
+        static int playback_frame = 0;
+        playback_frame++;
+        if(playback_frame % 60 == 0) {
+            fprintf(stderr, "Playback frame %d, time=%.2f\n",
+                    playback_frame, timeline_playback->getCurrentTime());
+            fflush(stderr);
+        }
+
+        // Restore object positions from snapshot
+        FrameSnapshot snapshot = timeline_playback->getCurrentState();
+        restoreFromSnapshot(snapshot);
+
+        // Update playback time if playing
+        if (timeline_playback->isPlaying()) {
+            float new_time = timeline_playback->getCurrentTime() + dt;
+            timeline_playback->setTime(new_time);
+        }
+
+        // Update slider position
+        slider.setPercent(timeline_playback->getProgress());
+
+        // DON'T return - allow camera movement and rendering to continue
+    }
+
+    // Show message when animation finishes and recording is complete
+    if(timeline_mode == TIMELINE_RECORDING && timeline_recorder) {
+        bool animation_finished = (commitlog && commitlog->isFinished() && commitqueue.empty());
+        static bool finish_message_shown = false;
+
+        if(animation_finished && !finish_message_shown) {
+            finish_message_shown = true;
+            printf("\n\n===========================================\n");
+            printf("Animation complete! Press 'T' to enter Timeline mode\n");
+            printf("===========================================\n\n");
+            fflush(stdout);
+        }
+    }
+
     if(message_timer>0.0f) message_timer -= dt;
     if(splash>0.0f)        splash -= dt;
 
@@ -1824,6 +1934,13 @@ void Gource::logic(float t, float dt) {
 
         if(gGourceSettings.start_position>0.0) {
             seekTo(gGourceSettings.start_position);
+        }
+
+        // Start recording timeline if enabled
+        if(timeline_mode == TIMELINE_RECORDING && timeline_recorder) {
+            timeline_recorder->startRecording(this);
+            printf("Timeline recording enabled - will allow scrubbing after animation completes\n");
+            fflush(stdout);
         }
     }
 
@@ -2096,6 +2213,17 @@ void Gource::logic(float t, float dt) {
     updateCamera(dt);
 
     updateTime(!commitqueue.empty() ? currtime : lasttime);
+
+    // Capture frame for timeline if recording
+    if(timeline_mode == TIMELINE_RECORDING && timeline_recorder) {
+        static int capture_count = 0;
+        timeline_recorder->captureFrame(currtime);
+        capture_count++;
+        if(capture_count % 60 == 0) {
+            fprintf(stderr, "Captured %d frames...\n", capture_count);
+            fflush(stderr);
+        }
+    }
 }
 
 void Gource::mousetrace(float dt) {
@@ -3353,4 +3481,123 @@ void Gource::draw(float t, float dt) {
 
         font.draw(1, 3, message);
     }
+}
+
+// Timeline implementation
+
+void Gource::runPreSimulation() {
+    if (!timeline_recorder) return;
+
+    printf("Starting pre-simulation...\n");
+    fflush(stdout);
+
+    // Start recording
+    timeline_recorder->startRecording(this);
+
+    // Save rendering state
+    bool old_hide_bloom = gGourceSettings.hide_bloom;
+    bool old_hide_users = gGourceSettings.hide_users;
+    bool old_hide_files = gGourceSettings.hide_files;
+    bool old_hide_tree = gGourceSettings.hide_tree;
+
+    // Disable rendering
+    gGourceSettings.hide_bloom = true;
+    gGourceSettings.hide_users = true;
+    gGourceSettings.hide_files = true;
+    gGourceSettings.hide_tree = true;
+
+    // Remove commit queue size limit to load all commits
+    int old_queue_size = commitqueue_max_size;
+    commitqueue_max_size = INT_MAX;
+
+    // Run simulation
+    float sim_time = 0.0f;
+    float dt = 1.0f / gGourceSettings.timeline_fps;
+    int frame_count = 0;
+
+    while(!stop_position_reached && (!commitlog->isFinished() || !commitqueue.empty())) {
+        // Show progress every 10 frames
+        if (frame_count % 10 == 0 && commitlog) {
+            float progress = commitlog->getPercent();
+            printf("\rPre-simulating: %.1f%% (frame %d)", progress * 100.0f, frame_count);
+            fflush(stdout);
+        }
+
+        // Run one frame of physics
+        logic(sim_time, dt);
+
+        // Capture snapshot
+        timeline_recorder->captureFrame(currtime);
+
+        sim_time += dt;
+        frame_count++;
+    }
+
+    printf("\rPre-simulation complete: %d frames recorded (%.1fs duration)\n",
+           frame_count, sim_time);
+    fflush(stdout);
+
+    // Restore rendering state
+    gGourceSettings.hide_bloom = old_hide_bloom;
+    gGourceSettings.hide_users = old_hide_users;
+    gGourceSettings.hide_files = old_hide_files;
+    gGourceSettings.hide_tree = old_hide_tree;
+    commitqueue_max_size = old_queue_size;
+
+    // Stop recording and switch to playback mode
+    timeline_recorder->stopRecording();
+    timeline_mode = TIMELINE_PLAYBACK;
+    timeline_playback = new TimelinePlayback(timeline_recorder);
+
+    // Reset time to beginning (but keep all objects alive for playback!)
+    currtime = 0;
+    lasttime = 0;
+
+    // Reset camera to initial position
+    camera.reset();
+
+    // Show slider
+    slider.show();
+
+    printf("Timeline ready - %d frames recorded, drag slider to scrub\n", frame_count);
+    fflush(stdout);
+}
+
+void Gource::restoreFromSnapshot(const FrameSnapshot& snapshot) {
+    // Restore camera position
+    camera.setPos(snapshot.camera_pos);
+
+    // Restore directory nodes
+    for (const auto& dn_state : snapshot.dirnodes) {
+        auto it = gGourceDirMap.find(dn_state.path);
+        if (it != gGourceDirMap.end()) {
+            RDirNode* node = it->second;
+            node->pos = dn_state.pos;
+            node->vel = dn_state.vel;
+            node->dir_radius = dn_state.radius;
+        }
+    }
+
+    // Restore files
+    for (const auto& f_state : snapshot.files) {
+        auto it = files.find(f_state.path);
+        if (it != files.end()) {
+            RFile* file = it->second;
+            file->setPos(f_state.pos);
+            file->setHidden(!f_state.visible);
+        }
+    }
+
+    // Restore users
+    for (const auto& u_state : snapshot.users) {
+        auto it = users.find(u_state.name);
+        if (it != users.end()) {
+            RUser* user = it->second;
+            user->setPos(u_state.pos);
+            user->setHidden(!u_state.visible);
+        }
+    }
+
+    // Update display time
+    updateTime(snapshot.display_time);
 }

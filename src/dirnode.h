@@ -34,8 +34,13 @@
 #include <set>
 
 class RFile;
+class TimelineRecorder;
+class Gource;
 
 class RDirNode : public QuadItem {
+    friend class TimelineRecorder;
+    friend class Gource;
+
     std::string abspath;
 
     std::string path_token;

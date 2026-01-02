@@ -111,6 +111,11 @@ public:
 
     bool loop;
 
+    // Timeline recording/playback
+    bool timeline_mode;
+    float timeline_fps;
+    bool timeline_auto_play;
+
     bool ffp;
 
     bool colour_user_images;

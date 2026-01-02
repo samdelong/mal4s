@@ -275,6 +275,8 @@ GourceSettings::GourceSettings() {
     conf_sections["debug"]          = "command-line";
     conf_sections["text-config-dir"] = "command-line";
     conf_sections["version"]         = "command-line";
+    conf_sections["timeline"]        = "command-line";
+    conf_sections["timeline-fps"]    = "command-line";
     conf_sections["hover-position"]  = "text";
     conf_sections["host-image-field"] = "text";
     conf_sections["key-width"]      = "text";
@@ -291,6 +293,8 @@ GourceSettings::GourceSettings() {
     arg_types["stop-at-end"]        = "bool";
     arg_types["dont-stop"]          = "bool";
     arg_types["loop"]               = "bool";
+    arg_types["timeline"]           = "bool";
+    arg_types["timeline-fps"]       = "float";
     arg_types["realtime"]           = "bool";
     arg_types["colour-images"]      = "bool";
     arg_types["hide-date"]          = "bool";
@@ -468,6 +472,10 @@ void GourceSettings::setGourceDefaults() {
     loop = false;
     loop_delay_seconds = 3.0f;
 
+    timeline_mode = false;
+    timeline_fps = 60.0f;
+    timeline_auto_play = true;
+
     logo        = "";
     logo_offset = vec2(20.0f,20.0f);
 
@@ -639,6 +647,18 @@ void GourceSettings::commandLineOption(const std::string& name, const std::strin
     if(name == "debug") {
 	log_level = LOG_LEVEL_DEBUG;
 	return;
+    }
+
+    if(name == "timeline") {
+        timeline_mode = true;
+        return;
+    }
+
+    if(name == "timeline-fps") {
+        timeline_fps = atof(value.c_str());
+        if(timeline_fps < 10.0f) timeline_fps = 10.0f;
+        if(timeline_fps > 120.0f) timeline_fps = 120.0f;
+        return;
     }
 
     std::string invalid_error = std::string("invalid ") + name + std::string(" value");
@@ -942,7 +962,17 @@ void GourceSettings::importTextSettings(ConfFile& conffile, ConfSection* text_se
 */
 void GourceSettings::importGourceSettings(ConfFile& conffile, ConfSection* gource_settings) {
 
+    // Save command-line timeline settings before resetting defaults
+    bool saved_timeline_mode = timeline_mode;
+    float saved_timeline_fps = timeline_fps;
+    bool saved_timeline_auto_play = timeline_auto_play;
+
     setGourceDefaults();
+
+    // Restore command-line timeline settings (they take precedence)
+    timeline_mode = saved_timeline_mode;
+    timeline_fps = saved_timeline_fps;
+    timeline_auto_play = saved_timeline_auto_play;
 
     //This default can not be set for windows builds in setGourceDefaults with the texturemanger.getDir() function
     if(background_image.empty()) {

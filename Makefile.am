@@ -44,6 +44,8 @@ sources = \
 	src/slider.cpp \
 	src/spline.cpp \
 	src/textbox.cpp \
+	src/timeline_recorder.cpp \
+	src/timeline_playback.cpp \
 	src/user.cpp \
 	src/zoomcamera.cpp
 

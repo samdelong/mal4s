@@ -22,6 +22,7 @@
 
 PositionSlider::PositionSlider(float percent) {
     this->percent = percent;
+    this->dragging = false;
 }
 
 void PositionSlider::init() {
@@ -161,5 +162,44 @@ void PositionSlider::draw(float dt) {
         font.draw(std::min((double)display.width - capwidth - 1.0, std::max(1.0, mouseover - (capwidth/2.0))), bounds.min.y - height_offset, caption);
     }
 
+}
+
+bool PositionSlider::startDrag(vec2 pos, float* percent_ptr) {
+    if (bounds.contains(pos)) {
+        dragging = true;
+        mouseover_elapsed = 0;
+        mouseover = pos.x;
+        percent = (float)(pos.x - bounds.min.x) / (bounds.max.x - bounds.min.x);
+
+        if (percent_ptr != 0) {
+            *percent_ptr = percent;
+        }
+
+        return true;
+    }
+
+    return false;
+}
+
+void PositionSlider::updateDrag(vec2 pos, float* percent_ptr) {
+    if (!dragging) return;
+
+    // Allow dragging outside bounds but clamp the percent
+    float raw_percent = (float)(pos.x - bounds.min.x) / (bounds.max.x - bounds.min.x);
+    percent = std::max(0.0f, std::min(1.0f, raw_percent));
+    mouseover = pos.x;
+    mouseover_elapsed = 0;
+
+    if (percent_ptr != 0) {
+        *percent_ptr = percent;
+    }
+}
+
+void PositionSlider::endDrag() {
+    dragging = false;
+}
+
+bool PositionSlider::isDragging() const {
+    return dragging;
 }
 

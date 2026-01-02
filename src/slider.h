@@ -38,6 +38,8 @@ class PositionSlider {
     float capwidth;
     std::string caption;
 
+    bool dragging;
+
     void drawSlider(float position) const;
 public:
     PositionSlider(float percent = 0.0f);
@@ -60,6 +62,12 @@ public:
     bool click(vec2 pos, float* percent_ptr);
     void logic(float dt);
     void draw(float dt);
+
+    // Timeline scrubbing support
+    bool startDrag(vec2 pos, float* percent_ptr);
+    void updateDrag(vec2 pos, float* percent_ptr);
+    void endDrag();
+    bool isDragging() const;
 };
 
 #endif

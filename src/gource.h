@@ -58,6 +58,9 @@
 #include "SDL_audio.h"
 #include "SDL_mixer.h"
 
+class TimelineRecorder;
+class TimelinePlayback;
+
 class Gource : public SDLApp {
     std::string logfile;
 
@@ -202,9 +205,23 @@ class Gource : public SDLApp {
     std::string message;
     float message_timer;
 
+    // Timeline recording/playback
+    TimelineRecorder* timeline_recorder;
+    TimelinePlayback* timeline_playback;
+
+    enum TimelineMode {
+        TIMELINE_DISABLED,
+        TIMELINE_RECORDING,
+        TIMELINE_PLAYBACK
+    };
+    TimelineMode timeline_mode;
+
     void setMessage(const char* str, ...);
 
     void reset();
+
+    void runPreSimulation();
+    void restoreFromSnapshot(const struct FrameSnapshot& snapshot);
 
     bool execAction(RFile* file, const std::string action);
     std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems);
@@ -277,6 +294,11 @@ class Gource : public SDLApp {
 
     void grabMouse(bool grab_mouse);
 public:
+    // Accessors for timeline recording
+    const ZoomCamera& getCamera() const { return camera; }
+    const std::map<std::string, RFile*>& getFiles() const { return files; }
+    const std::map<std::string, RUser*>& getUsers() const { return users; }
+    time_t getCurrentTime() const { return currtime; }
     void screenshot();
 
     Mix_Chunk *f5;

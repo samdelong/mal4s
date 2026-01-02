@@ -23,8 +23,11 @@
 #include "core/stringhash.h"
 
 class RDirNode;
+class TimelineRecorder;
 
 class RFile : public Pawn {
+    friend class TimelineRecorder;
+
     vec3 file_colour;
     vec3 touch_colour;
 
