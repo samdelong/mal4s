@@ -2220,23 +2220,6 @@ void Gource::logic(float t, float dt) {
 
 void Gource::mousetrace(float dt) {
 
-    // In timeline playback mode, skip file/user interaction - allow camera drag only
-    if(timeline_mode == TIMELINE_PLAYBACK) {
-        if(hoverUser) {
-            hoverUser->setMouseOver(false);
-            hoverUser = 0;
-        }
-        if(hoverFile) {
-            hoverFile->setMouseOver(false);
-            hoverFile = 0;
-        }
-        // If clicked and NOT dragging slider, enable camera dragging
-        if(mouseclicked && !slider.isDragging()) {
-            selectBackground();
-        }
-        return;
-    }
-
     vec3 cam_pos = camera.getPos();
 
     vec2 projected_mouse = vec2( -(mousepos.x * 2.0f - ((float)display.width)) / ((float)display.height),
@@ -3651,7 +3634,20 @@ void Gource::restoreFromSnapshot(const FrameSnapshot& snapshot) {
             node->pos = dn_state.pos;
             node->vel = dn_state.vel;
             node->dir_radius = dn_state.radius;
+            node->col = dn_state.col;
             node->visible = dn_state.visible;
+            node->position_initialized = true;
+        }
+    }
+
+    for (auto it = gGourceDirMap.begin(); it != gGourceDirMap.end(); ++it) {
+        RDirNode* node = it->second;
+        if (!node) continue;
+        RDirNode* parent = node->getParent();
+        if (parent) {
+            node->spos = node->pos + (parent->getPos() - node->pos) * 0.5f;
+        } else {
+            node->spos = node->pos;
         }
     }
 
