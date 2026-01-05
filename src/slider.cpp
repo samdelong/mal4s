@@ -140,6 +140,28 @@ void PositionSlider::draw(float dt) {
 
     float pos_x = bounds.min.x + (bounds.max.x - bounds.min.x) * percent;
 
+    // Draw progress bar (filled rectangle from start to current position)
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_BLEND);
+
+    // Shadow for progress bar
+    glColor4f(0.0f, 0.0f, 0.0f, 0.5*alpha);
+    glBegin(GL_QUADS);
+        glVertex2f(bounds.min.x + 2.0f, bounds.min.y + 2.0f);
+        glVertex2f(pos_x + 2.0f, bounds.min.y + 2.0f);
+        glVertex2f(pos_x + 2.0f, bounds.max.y + 2.0f);
+        glVertex2f(bounds.min.x + 2.0f, bounds.max.y + 2.0f);
+    glEnd();
+
+    // Progress bar
+    glColor4f(slidercol.x * 0.5f, slidercol.y * 0.5f, slidercol.z * 0.5f, alpha * 0.6f);
+    glBegin(GL_QUADS);
+        glVertex2f(bounds.min.x, bounds.min.y);
+        glVertex2f(pos_x, bounds.min.y);
+        glVertex2f(pos_x, bounds.max.y);
+        glVertex2f(bounds.min.x, bounds.max.y);
+    glEnd();
+
     glColor4f(0.0f, 0.0f, 0.0f, 0.7*alpha);
 
     glPushMatrix();

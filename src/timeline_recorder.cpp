@@ -152,7 +152,7 @@ const FrameSnapshot* TimelineRecorder::getSnapshotAt(float time) const {
 
     while (left < right) {
         size_t mid = left + (right - left) / 2;
-        if (snapshots[mid].timestamp < time) {
+        if (snapshots[mid].timestamp <= time) {
             left = mid + 1;
         } else {
             right = mid;
@@ -162,8 +162,8 @@ const FrameSnapshot* TimelineRecorder::getSnapshotAt(float time) const {
     if (left == 0) return &snapshots[0];
     if (left >= snapshots.size()) return &snapshots[snapshots.size() - 1];
 
-    // Return the snapshot at or just before the time
-    return &snapshots[left > 0 ? left - 1 : 0];
+    // Return the snapshot at or just before the time (inclusive).
+    return &snapshots[left - 1];
 }
 
 const FrameSnapshot* TimelineRecorder::getSnapshotByIndex(size_t idx) const {

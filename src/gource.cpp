@@ -987,33 +987,9 @@ void Gource::keyPress(SDL_KeyboardEvent *e) {
             if(timeline_mode == TIMELINE_RECORDING && timeline_recorder) {
                 bool animation_finished = (commitlog && commitlog->isFinished() && commitqueue.empty());
                 if(animation_finished) {
-                    // Stop recording and enter playback mode
-                    printf("Stopping recording...\n");
-                    timeline_recorder->stopRecording();
-
-                    size_t frame_count = timeline_recorder->getSnapshotCount();
-                    float duration = timeline_recorder->getTotalDuration();
-                    printf("Creating TimelinePlayback...\n");
-                    timeline_mode = TIMELINE_PLAYBACK;
-                    timeline_playback = new TimelinePlayback(timeline_recorder);
-
-                    // Start at the end of the timeline
-                    timeline_playback->setTime(duration);
-
-                    printf("Starting playback...\n");
-                    timeline_playback->play();
-
-                    printf("Showing slider...\n");
-                    slider.show();
-
-                    printf("\n===========================================\n");
-                    printf("Timeline mode activated!\n");
-                    printf("Frames recorded: %zu\n", frame_count);
-                    printf("Duration: %.1fs\n", duration);
-                    printf("Drag the slider to scrub through the timeline\n");
-                    printf("===========================================\n\n");
-
-                    return; // Don't toggle hide_tree when entering timeline mode
+                    if(finishTimelineRecording(true)) {
+                        return; // Don't toggle hide_tree when entering timeline mode
+                    }
                 }
             }
 
@@ -1106,7 +1082,17 @@ void Gource::keyPress(SDL_KeyboardEvent *e) {
         }
 
         if (key_space) {
-            paused = !paused;
+            // In timeline playback mode, toggle timeline play/pause
+            if(timeline_mode == TIMELINE_PLAYBACK && timeline_playback) {
+                if(timeline_playback->isPlaying()) {
+                    timeline_playback->pause();
+                } else {
+                    timeline_playback->play();
+                }
+            } else {
+                // Normal mode - toggle pause
+                paused = !paused;
+            }
         }
 
         if (key_equals || key_plus) {
@@ -1870,7 +1856,8 @@ void Gource::logic(float t, float dt) {
     if (timeline_mode == TIMELINE_PLAYBACK && timeline_playback) {
         // Update playback time if playing
         if (timeline_playback->isPlaying()) {
-            float new_time = timeline_playback->getCurrentTime() + dt;
+            float time_inc = dt * 86400.0f * gGourceSettings.days_per_second;
+            float new_time = timeline_playback->getCurrentTime() + time_inc;
             timeline_playback->setTime(new_time);
         }
 
@@ -2212,11 +2199,21 @@ void Gource::logic(float t, float dt) {
     // Capture frame for timeline if recording
     if(timeline_mode == TIMELINE_RECORDING && timeline_recorder) {
         static int capture_count = 0;
-        timeline_recorder->captureFrame(currtime);
+        timeline_recorder->captureFrame(currtime + subseconds);
         capture_count++;
         if(capture_count % 60 == 0) {
             fprintf(stderr, "Captured %d frames...\n", capture_count);
             fflush(stderr);
+        }
+    }
+
+    if(timeline_mode == TIMELINE_RECORDING && timeline_recorder) {
+        bool animation_finished = (commitlog && commitlog->isFinished() && commitqueue.empty());
+        if(animation_finished) {
+            float idle_threshold = 1.0f;
+            if(idle_time >= idle_threshold) {
+                finishTimelineRecording(true);
+            }
         }
     }
 }
@@ -3501,6 +3498,49 @@ void Gource::draw(float t, float dt) {
     }
 }
 
+bool Gource::finishTimelineRecording(bool show_message) {
+    if(timeline_mode != TIMELINE_RECORDING || !timeline_recorder) return false;
+
+    // Stop recording and enter playback mode
+    if(show_message) {
+        printf("Stopping recording...\n");
+    }
+    timeline_recorder->stopRecording();
+
+    size_t frame_count = timeline_recorder->getSnapshotCount();
+    float duration = timeline_recorder->getTotalDuration();
+
+    if(show_message) {
+        printf("Creating TimelinePlayback...\n");
+    }
+
+    timeline_mode = TIMELINE_PLAYBACK;
+    if(timeline_playback) {
+        delete timeline_playback;
+        timeline_playback = nullptr;
+    }
+    timeline_playback = new TimelinePlayback(timeline_recorder);
+
+    // Start at the end of the timeline, paused
+    timeline_playback->setTime(duration);
+
+    if(show_message) {
+        printf("Showing slider...\n");
+    }
+    slider.show();
+
+    if(show_message) {
+        printf("\n===========================================\n");
+        printf("Timeline mode activated!\n");
+        printf("Frames recorded: %zu\n", frame_count);
+        printf("Duration: %.1fs\n", duration);
+        printf("Drag the slider to any position, then press SPACE to play\n");
+        printf("===========================================\n\n");
+    }
+
+    return true;
+}
+
 // Timeline implementation
 
 void Gource::runPreSimulation() {
@@ -3545,7 +3585,7 @@ void Gource::runPreSimulation() {
         logic(sim_time, dt);
 
         // Capture snapshot
-        timeline_recorder->captureFrame(currtime);
+        timeline_recorder->captureFrame(currtime + subseconds);
 
         sim_time += dt;
         frame_count++;
