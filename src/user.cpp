@@ -346,6 +346,9 @@ const std::string& RUser::getName() const {
 }
 
 float RUser::getAlpha() const {
+    if(hasAlphaOverride()) {
+        return getAlphaOverride();
+    }
     float alpha = Pawn::getAlpha();
     //user fades out if not doing anything
     if(elapsed - last_action > gGourceSettings.user_idle_time) {

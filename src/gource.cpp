@@ -3656,6 +3656,7 @@ void Gource::restoreFromSnapshot(const FrameSnapshot& snapshot) {
         RFile* file = it->second;
         bool in_snapshot = (visible_files.find(file->path) != visible_files.end());
         file->setHidden(!in_snapshot);
+        file->clearAlphaOverride();
     }
 
     for (const auto& f_state : snapshot.files) {
@@ -3664,6 +3665,7 @@ void Gource::restoreFromSnapshot(const FrameSnapshot& snapshot) {
             RFile* file = it->second;
             file->setPos(f_state.pos);
             file->setHidden(!f_state.visible);
+            file->setAlphaOverride(f_state.alpha);
         }
     }
 
@@ -3672,6 +3674,7 @@ void Gource::restoreFromSnapshot(const FrameSnapshot& snapshot) {
         RUser* user = it->second;
         bool in_snapshot = (visible_users.find(user->getName()) != visible_users.end());
         user->setHidden(!in_snapshot);
+        user->clearAlphaOverride();
     }
 
     for (const auto& u_state : snapshot.users) {
@@ -3680,6 +3683,7 @@ void Gource::restoreFromSnapshot(const FrameSnapshot& snapshot) {
             RUser* user = it->second;
             user->setPos(u_state.pos);
             user->setHidden(!u_state.visible);
+            user->setAlphaOverride(u_state.alpha);
         }
     }
 

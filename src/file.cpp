@@ -165,6 +165,9 @@ vec3 RFile::getColour() const{
 }
 
 float RFile::getAlpha() const{
+    if(hasAlphaOverride()) {
+        return getAlphaOverride();
+    }
     float alpha = Pawn::getAlpha();
 
     //user fades out if not doing anything

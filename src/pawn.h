@@ -51,6 +51,8 @@ protected:
     bool shadow;
 
     bool hidden;
+    bool alpha_override;
+    float alpha_override_value;
 
     int tagid;
 
@@ -95,7 +97,7 @@ public:
     void setHidden(bool hidden){ this->hidden = hidden; }
     bool isHidden() const { return hidden; }
 
-    virtual float getAlpha() const{ return std::min(elapsed/fadetime, 1.0f); }
+    virtual float getAlpha() const{ return alpha_override ? alpha_override_value : std::min(elapsed/fadetime, 1.0f); }
     virtual vec3 getColour() const { return vec3(1.0, 1.0, 1.0); }
 
     void setGraphic(TextureResource* graphic);
@@ -105,9 +107,13 @@ public:
     void drawShadow(float dt);
 
     void drawName();
+
+    void setAlphaOverride(float alpha);
+    void clearAlphaOverride();
+    bool hasAlphaOverride() const { return alpha_override; }
+    float getAlphaOverride() const { return alpha_override_value; }
 };
 
 extern float gGourceShadowStrength;
 
 #endif
-

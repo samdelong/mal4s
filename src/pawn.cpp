@@ -24,6 +24,8 @@ Pawn::Pawn(const std::string& name, vec2 pos, int tagid) {
     this->pos   = pos;
     this->tagid = tagid;
     this->hidden = false;
+    this->alpha_override = false;
+    this->alpha_override_value = 1.0f;
     this->speed = 1.0;
 
     selected = false;
@@ -95,6 +97,15 @@ void Pawn::setGraphic(TextureResource* graphic) {
 void Pawn::setMouseOver(bool over) {
     //showName();
     this->mouseover = over;
+}
+
+void Pawn::setAlphaOverride(float alpha) {
+    alpha_override = true;
+    alpha_override_value = std::max(0.0f, std::min(alpha, 1.0f));
+}
+
+void Pawn::clearAlphaOverride() {
+    alpha_override = false;
 }
 
 void Pawn::setSelected(bool selected) {
