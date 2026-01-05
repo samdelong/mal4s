@@ -222,7 +222,7 @@ class Gource : public SDLApp {
 
     void runPreSimulation();
     void restoreFromSnapshot(const struct FrameSnapshot& snapshot);
-    bool finishTimelineRecording(bool show_message);
+    bool finishTimelineRecording();
 
     bool execAction(RFile* file, const std::string action);
     std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems);
