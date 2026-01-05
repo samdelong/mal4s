@@ -17,6 +17,12 @@
 
 #include "main.h"
 
+#if defined(_WIN32)
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
+
 std::string search4TextConfig(std::string confname) {
 	debugLog("Checking for text config %s in the working directory", confname.c_str());
 	if(!boost::filesystem::exists(confname.c_str())) {
@@ -43,6 +49,13 @@ std::string search4TextConfig(std::string confname) {
 	return confname;
 }
 	
+static bool stdinIsTTY() {
+#if defined(_WIN32)
+	return _isatty(_fileno(stdin));
+#else
+	return isatty(fileno(stdin));
+#endif
+}
 
 int main(int argc, char *argv[]) {
 
@@ -71,6 +84,9 @@ int main(int argc, char *argv[]) {
     std::string captionFile = texturemanager.getDir() + "sample--newns.captions";
     std::string captionArg = "--caption-file";
     bool isDemo = false;
+    int baseArgc = argc;
+    char** baseArgv = argv;
+    std::vector<char*> demo_with_flags;
     int replacementArgc = argc;
     int demoindex = 4;
     char* demo[demoindex];
@@ -89,8 +105,21 @@ int main(int argc, char *argv[]) {
 		gGourceSettings.parseArgs(demoindex, demo, conf, &files);
 	} else {
 	        gGourceSettings.parseArgs(argc, argv, conf, &files);
+		if(files.empty() && stdinIsTTY() && gGourceSettings.default_path && gGourceSettings.load_config.empty()) {
+			printf("No log file specified, using sample file: %s.\n", demoFile.c_str());
+			demo_with_flags.reserve(argc + 1);
+			demo_with_flags.push_back(argv[0]);
+			for(int it = 1; it < argc; it++) {
+				demo_with_flags.push_back(argv[it]);
+			}
+			demo_with_flags.push_back(strdup(demoFile.c_str()));
+			baseArgv = demo_with_flags.data();
+			baseArgc = static_cast<int>(demo_with_flags.size());
+			files.push_back(demoFile);
+		}
 	}
         Logger::getDefault()->setLevel(gGourceSettings.log_level);
+	replacementArgc = baseArgc;
 
 	if(!files.empty() && gGourceSettings.load_text_config.empty()) {
 		size_t conf_marker = files[0].rfind("--");
@@ -139,17 +168,17 @@ int main(int argc, char *argv[]) {
 
     	char* replacementArgv[replacementArgc];
 	int replacementIt = 0;
-	for(int it = 0; it < replacementArgc; it++) {
-		if(it == 0 && replacementArgc == argc) {
-			replacementArgv[0] = argv[0];
+	for(int it = 0; it < baseArgc; it++) {
+		if(it == 0 && replacementArgc == baseArgc) {
+			replacementArgv[0] = baseArgv[0];
 			replacementIt = 1;
 		} else if(it == 0) {
-			replacementArgv[0] = argv[0];
+			replacementArgv[0] = baseArgv[0];
 			replacementArgv[1] = strdup(captionArg.c_str());
 			replacementArgv[2] = strdup(captionFile.c_str());
 			replacementIt = 3;
 		} else {
-			replacementArgv[replacementIt] = argv[it];
+			replacementArgv[replacementIt] = baseArgv[it];
 			replacementIt++;
 		}
 	}
@@ -225,6 +254,10 @@ int main(int argc, char *argv[]) {
 	if(!textConfFile.empty()) {
 	        gGourceSettings.importTextSettings(textConf);
 	} else gGourceSettings.importTextSettings(conf);
+
+	if(gGourceSettings.path == "-" && !stdinIsTTY()) {
+		gGourceSettings.timeline_mode = false;
+	}
 
         //save config
         if(!gGourceSettings.save_config.empty()) {

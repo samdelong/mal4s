@@ -472,7 +472,7 @@ void GourceSettings::setGourceDefaults() {
     loop = false;
     loop_delay_seconds = 3.0f;
 
-    timeline_mode = false;
+    timeline_mode = true;
     timeline_fps = 60.0f;
     timeline_auto_play = true;
 
@@ -1363,7 +1363,7 @@ void GourceSettings::importGourceSettings(ConfFile& conffile, ConfSection* gourc
 #else
             dirfile = p.filename().string();
 #endif
-            std::string file_ext = extension(p);
+            std::string file_ext = p.extension().string();
             boost::algorithm::to_lower(file_ext);
 
             if(file_ext != ".jpg" && file_ext != ".jpeg" && file_ext != ".png") continue;
